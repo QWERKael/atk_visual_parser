@@ -4,7 +4,8 @@ import (
 	"github.com/rivo/tview"
 	"strconv"
 	"time"
-	"atk_visual_paser/binlog_parse"
+	"atk_visual_parser/binlog_parse"
+	"github.com/siddontang/go-mysql/replication"
 )
 
 func getChoiceArea(parseOption *binlog_parse.ParseOption) *tview.Form {
@@ -19,6 +20,12 @@ func getChoiceArea(parseOption *binlog_parse.ParseOption) *tview.Form {
 	}).AddInputField("time", "", 20, nil, func(text string) {
 		formatTime, _ := time.Parse("2006-01-02 15:04:05", text)
 		parseOption.StartTime = uint32(formatTime.Unix())
+	}).AddCheckbox("INSERT:", false, func(checked bool) {
+		if checked {parseOption.EventFilterElement = append(parseOption.EventFilterElement,replication.WRITE_ROWS_EVENTv2)}
+	}).AddCheckbox("UPDATE:", false, func(checked bool) {
+		if checked {parseOption.EventFilterElement = append(parseOption.EventFilterElement,replication.UPDATE_ROWS_EVENTv2)}
+	}).AddCheckbox("DELETE:", false, func(checked bool) {
+		if checked {parseOption.EventFilterElement = append(parseOption.EventFilterElement,replication.DELETE_ROWS_EVENTv2)}
 	})
 	return choiceArea
 }

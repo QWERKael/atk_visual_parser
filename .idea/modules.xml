@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/atk_visual_paser.iml" filepath="$PROJECT_DIR$/.idea/atk_visual_paser.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/atk_visual_parser.iml" filepath="$PROJECT_DIR$/.idea/atk_visual_parser.iml" />
     </modules>
   </component>
 </project>

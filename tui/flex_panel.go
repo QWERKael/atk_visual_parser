@@ -2,9 +2,8 @@ package tui
 
 import (
 	"github.com/rivo/tview"
-	"atk_visual_paser/binlog_parse"
+	"atk_visual_parser/binlog_parse"
 	"github.com/gdamore/tcell"
-	"github.com/siddontang/go-mysql/replication"
 )
 
 func RunFlex() {
@@ -12,16 +11,19 @@ func RunFlex() {
 	flex := tview.NewFlex()
 	interactionArea := getInteractionBox()
 	displayArea := getDisplayArea()
-	var parseOption binlog_parse.ParseOption
-	choiceArea := getChoiceArea(&parseOption)
-	parseOption.BinlogEvents = make(chan replication.BinlogEvent, 1)
-	choiceArea.AddButton("Run", func() {
+	parseOption := binlog_parse.NewParseOption()
+	choiceArea := getChoiceArea(parseOption)
+	choiceArea.AddButton("Next", func() {
 				if !parseOption.SkipInit {parseOption.BeforeFirstBinlog()}
 				str := parseOption.GetNextBinlogString()
 				reWriteTextView(displayArea,str)
 				//reWriteTextView(displayArea, fmt.Sprintf("FileName:\t%s\nStartPos:\t%d\nStartTime:\t%s\n", parseOption.FileName, parseOption.StartPos, parseOption.StartTime))
 				//app.SetFocus(interactionArea)
 				app.Draw()
+			}).AddButton("ReStart", func() {
+				parseOption.ReStartFlag = true
+				<- parseOption.BinlogEvents
+				parseOption.BeforeFirstBinlog()
 			}).
 				AddButton("Switch", func() {
 				app.SetFocus(displayArea)

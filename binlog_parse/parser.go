@@ -10,18 +10,37 @@ import (
 )
 
 type ParseOption struct {
-	FileName     string
-	BinlogFile   *os.File
-	StartPos     uint32
-	StopPos      uint32
-	NextPos      uint32
-	StartTime    uint32
-	StopTime     uint32
-	BinlogParser replication.BinlogParser
-	BinlogEvents chan replication.BinlogEvent
-	SkipInit     bool
+	FileName           string
+	BinlogFile         *os.File
+	StartPos           uint32
+	StopPos            uint32
+	NextPos            uint32
+	StartTime          uint32
+	StopTime           uint32
+	BinlogParser       *replication.BinlogParser
+	BinlogEvents       chan replication.BinlogEvent
+	SkipInit           bool
+	ReStartFlag        bool
+	EventFilterElement []replication.EventType
 }
 
+func NewParseOption() *ParseOption {
+	return &ParseOption{FileName: "",
+		BinlogFile: new(os.File),
+		StartPos: 0,
+		StopPos: 0,
+		NextPos: 0,
+		StartTime: 0,
+		StopTime: 0,
+		BinlogParser: new(replication.BinlogParser),
+		BinlogEvents: make(chan replication.BinlogEvent, 0),
+		SkipInit: false,
+		ReStartFlag: false,
+		EventFilterElement: []replication.EventType{replication.QUERY_EVENT,
+			replication.XID_EVENT,
+			replication.TABLE_MAP_EVENT},
+	}
+}
 
 func (po *ParseOption) BeforeFirstBinlog() {
 	//读文件
@@ -40,19 +59,22 @@ func (po *ParseOption) BeforeFirstBinlog() {
 	if err != nil {
 		panic(err.Error())
 	}
-	eventFilterElement := []replication.EventType{replication.QUERY_EVENT,
-		replication.XID_EVENT,
-		replication.TABLE_MAP_EVENT,
-		replication.WRITE_ROWS_EVENTv2,
-		replication.UPDATE_ROWS_EVENTv2,
-		replication.DELETE_ROWS_EVENTv2}
-	preFilter := MakePreFilter(eventFilterElement, po.StartTime, po.StartTime)
+	if po.StartPos > po.NextPos {
+		po.NextPos = po.StartPos
+	}
+	//eventFilterElement := []replication.EventType{replication.QUERY_EVENT,
+	//	replication.XID_EVENT,
+	//	replication.TABLE_MAP_EVENT,
+	//	replication.WRITE_ROWS_EVENTv2,
+	//	replication.UPDATE_ROWS_EVENTv2,
+	//	replication.DELETE_ROWS_EVENTv2}
+	preFilter := MakePreFilter(po.EventFilterElement, po.StartTime, po.StartTime)
 	go po.GetNextBinlogEvent(preFilter)
 	po.SkipInit = true
 }
 
 func (po *ParseOption) GetNextBinlogString() string {
-	parsedBinlogEvent  := <-po.BinlogEvents
+	parsedBinlogEvent := <-po.BinlogEvents
 	header := parsedBinlogEvent.Header
 	event := parsedBinlogEvent.Event
 	var strBuf bytes.Buffer
@@ -64,6 +86,10 @@ func (po *ParseOption) GetNextBinlogString() string {
 func (po *ParseOption) GetNextBinlogEvent(preFilter PreFilter) {
 	startPos := po.NextPos
 	for startPos > po.StopPos || po.StopPos == 0 {
+		if po.ReStartFlag {
+			po.ReStartFlag = false
+			break
+		}
 		eventTimestamp, eventLength, nextPos, eventType, err := PreDistribute(po.BinlogFile, startPos)
 		if err != nil {
 			panic(err.Error())
@@ -74,6 +100,7 @@ func (po *ParseOption) GetNextBinlogEvent(preFilter PreFilter) {
 		}
 		po.NextPos = nextPos
 		rawData, err := GetEventBinary(po.BinlogFile, startPos, eventLength)
+		startPos = nextPos
 		if err != nil {
 			panic(err.Error())
 		}
@@ -83,10 +110,28 @@ func (po *ParseOption) GetNextBinlogEvent(preFilter PreFilter) {
 		}
 		//header := parsedBinlogEvent.Header
 		//event := parsedBinlogEvent.Event
+		//if event
 		po.BinlogEvents <- *parsedBinlogEvent
-		startPos = nextPos
 	}
 }
+
+//type SchemaTable struct {
+//	SchemaName string
+//	TableName  string
+//}
+//
+//type EventFilter func(schemaName string, tableName string) bool
+//
+//func MakeEventFilter(transFilterElement []SchemaTable) EventFilter {
+//	return func(schemaName string, tableName string) bool {
+//		for _, tfe := range transFilterElement {
+//			if (tfe.SchemaName == "*" || tfe.SchemaName == schemaName) && (tfe.TableName == "*" || tfe.TableName == tableName) {
+//				return true
+//			}
+//		}
+//		return false
+//	}
+//}
 
 type PreFilter func(eventType replication.EventType, timeStamp uint32) bool
 
@@ -117,7 +162,7 @@ func checkBinlogFile(f io.ReaderAt) error {
 	return nil
 }
 
-func GetFormatDescriptionEvent(file io.ReaderAt) (replication.BinlogParser, uint32, error) {
+func GetFormatDescriptionEvent(file io.ReaderAt) (*replication.BinlogParser, uint32, error) {
 	var err error = nil
 	var startPos, nextPos, eventLength uint32
 	var rawData []byte
@@ -126,7 +171,7 @@ func GetFormatDescriptionEvent(file io.ReaderAt) (replication.BinlogParser, uint
 	b := make([]byte, 4)
 	if _, err := file.ReadAt(b, int64(atPos)); err != nil {
 		p := replication.NewBinlogParser()
-		return *p, 0, err
+		return p, 0, err
 	}
 	eventLength = binary.LittleEndian.Uint32(b)
 	nextPos = startPos + eventLength
@@ -136,7 +181,7 @@ func GetFormatDescriptionEvent(file io.ReaderAt) (replication.BinlogParser, uint
 	strBuf := bytes.NewBufferString(fmt.Sprintf("\ngoroutine num %d\n", 0))
 	fmt.Fprintf(strBuf, "\n-- 开始解析\n")
 	fmt.Println(strBuf)
-	return *p, nextPos, err
+	return p, nextPos, err
 }
 
 func GetEventBinary(file io.ReaderAt, startPos uint32, eventLength uint32) ([]byte, error) {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"atk_visual_paser/tui"
+	"atk_visual_parser/tui"
 )
 
 func main() {
